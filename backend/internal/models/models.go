@@ -85,3 +85,10 @@ type BroadcastSummary struct {
 	LastSentAt   *time.Time      `json:"last_sent_at"`
 	CreatedAt    time.Time       `json:"created_at"`
 }
+
+// Admin represents an authenticated user in the system
+type Admin struct {
+	gorm.Model
+	Username string `gorm:"uniqueIndex;not null"`
+	Password string `gorm:"not null"` // Hashed password
+}

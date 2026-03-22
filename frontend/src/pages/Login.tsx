@@ -33,14 +33,14 @@ export default function Login({ onLogin }: { onLogin: (token: string) => void })
             style={{ background: 'linear-gradient(135deg, #25d366, #128c7e)', boxShadow: '0 8px 32px rgba(37,211,102,0.3)' }}>
             <MessagesSquare size={32} color="white" />
           </div>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>MediBlast</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>Nosent</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--text-2)' }}>Login untuk mengelola sistem</p>
         </div>
 
         {/* Card */}
         <div className="glass-2 rounded-2xl p-6 sm:p-8" style={{ border: '1px solid var(--border)' }}>
           <form onSubmit={handleLogin} className="space-y-4">
-            
+
             <div className="space-y-1">
               <label className="text-xs font-medium ml-1" style={{ color: 'var(--text-2)' }}>Username</label>
               <div className="relative">
@@ -93,7 +93,7 @@ export default function Login({ onLogin }: { onLogin: (token: string) => void })
             >
               {loading ? <Loader2 size={18} className="animate-spin" /> : 'Login'}
             </button>
-            
+
           </form>
         </div>
       </div>

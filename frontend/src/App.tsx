@@ -103,7 +103,7 @@ function MobileHeader({ theme, onToggleTheme, status, onLogout }: {
     '/setup': 'Pengaturan WA',
   }
   const isDetail = location.pathname.startsWith('/history/') && location.pathname !== '/history'
-  const title = isDetail ? 'Detail Broadcast' : (pageTitle[location.pathname] ?? 'MediBlast')
+  const title = isDetail ? 'Detail Broadcast' : (pageTitle[location.pathname] ?? 'Nosent')
 
   const statusColor = { connected: '#25d366', waiting_qr: '#f59e0b', disconnected: '#ef4444' }[status]
 
@@ -217,7 +217,7 @@ function DesktopSidebar({ status, theme, onToggleTheme, onLogout }: {
             <MessageSquare size={16} color="white" />
           </div>
           <div>
-            <div className="font-semibold text-sm" style={{ color: 'var(--text)' }}>MediBlast</div>
+            <div className="font-semibold text-sm" style={{ color: 'var(--text)' }}>Nosent</div>
             <div className="text-[11px]" style={{ color: 'var(--text-2)' }}>Pengingat Pasien</div>
           </div>
         </div>

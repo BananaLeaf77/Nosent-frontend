@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,18 +9,23 @@ import (
 	"log"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/yourorg/whatsapp-broadcast/internal/models"
 	"github.com/yourorg/whatsapp-broadcast/internal/scheduler"
 	"github.com/yourorg/whatsapp-broadcast/internal/whatsapp"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
-var authToken string
+var jwtSecret []byte
 
 func init() {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	authToken = hex.EncodeToString(b)
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		// Fallback to a fixed but random-looking secret for dev unless configured
+		secret = "super-secret-default-key-12345"
+	}
+	jwtSecret = []byte(secret)
 }
 
 type Handler struct {
@@ -43,9 +46,15 @@ func (h *Handler) RegisterRoutes(app *fiber.App) {
 
 	// Auth Middleware
 	api.Use(func(c *fiber.Ctx) error {
-		token := c.Get("Authorization")
-		if token == "Bearer "+authToken {
-			return c.Next()
+		tokenStr := c.Get("Authorization")
+		if len(tokenStr) > 7 && tokenStr[:7] == "Bearer " {
+			tokenString := tokenStr[7:]
+			token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+				return jwtSecret, nil
+			})
+			if err == nil && token.Valid {
+				return c.Next()
+			}
 		}
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
 	})
@@ -78,17 +87,27 @@ func (h *Handler) Login(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
-	admin := os.Getenv("ADMIN")
-	pass := os.Getenv("ADMIN_PASSWORD")
-
-	if admin == "" || pass == "" {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Admin credentials not configured"})
+	var admin models.Admin
+	if err := h.db.Where("username = ?", req.Username).First(&admin).Error; err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
-	if req.Username == admin && req.Password == pass {
-		return c.JSON(fiber.Map{"token": authToken})
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(req.Password)); err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
-	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+
+	// Create JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": admin.ID,
+		"exp": time.Now().Add(time.Hour * 24 * 7).Unix(), // 7 days expiration
+	})
+
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to generate token"})
+	}
+
+	return c.JSON(fiber.Map{"token": tokenString})
 }
 
 // ─── WhatsApp ───────────────────────────────────────────────────────────────

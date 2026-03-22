@@ -2,8 +2,11 @@ package storage
 
 import (
 	"fmt"
+	"log"
 	"os"
 
+	"github.com/yourorg/whatsapp-broadcast/internal/models"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -41,6 +44,33 @@ func Connect() (*gorm.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(10)
 	sqlDB.SetMaxIdleConns(5)
+
+	// Create admin
+	if err := db.AutoMigrate(&models.Admin{}); err != nil {
+		log.Printf("Failed to migrate Admin table: %v", err)
+	}
+
+	adminUser := os.Getenv("ADMIN")
+	adminPass := os.Getenv("ADMIN_PASSWORD")
+
+	if adminUser != "" && adminPass != "" {
+		var admin models.Admin
+		if err := db.Where("username = ?", adminUser).First(&admin).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				log.Printf("Creating default admin from environment...")
+				hashed, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcrypt.DefaultCost)
+				if err == nil {
+					db.Create(&models.Admin{
+						Username: adminUser,
+						Password: string(hashed),
+					})
+				}
+			}
+		} else {
+			// If already exists, you can theoretically update password if it changes in env,
+			// but prompt says "if already exist skip"
+		}
+	}
 
 	return db, nil
 }
