@@ -4,6 +4,14 @@ const BASE = import.meta.env.VITE_API_URL || ''
 
 export const api = axios.create({ baseURL: BASE })
 
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 export type WAStatus = 'disconnected' | 'waiting_qr' | 'connected'
@@ -52,4 +60,8 @@ export const broadcastApi = {
   cancel: (id: number) => api.delete(`/api/broadcasts/${id}`),
   logs: (id: number) => api.get<MessageLog[]>(`/api/broadcasts/${id}/logs`),
   downloadUrl: (id: number) => `${BASE}/api/broadcasts/${id}/download`,
+}
+
+export const authApi = {
+  login: (username: string, password: string) => api.post<{ token: string }>('/api/auth/login', { username, password })
 }

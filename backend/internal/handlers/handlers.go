@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +17,14 @@ import (
 	"gorm.io/gorm"
 )
 
+var authToken string
+
+func init() {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	authToken = hex.EncodeToString(b)
+}
+
 type Handler struct {
 	db    *gorm.DB
 	wa    *whatsapp.Client
@@ -27,6 +37,18 @@ func New(db *gorm.DB, wa *whatsapp.Client, sched *scheduler.Scheduler) *Handler 
 
 func (h *Handler) RegisterRoutes(app *fiber.App) {
 	api := app.Group("/api")
+
+	// Auth route (unprotected)
+	api.Post("/auth/login", h.Login)
+
+	// Auth Middleware
+	api.Use(func(c *fiber.Ctx) error {
+		token := c.Get("Authorization")
+		if token == "Bearer "+authToken {
+			return c.Next()
+		}
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	})
 
 	// WhatsApp auth
 	api.Get("/wa/status", h.WAStatus)
@@ -41,6 +63,32 @@ func (h *Handler) RegisterRoutes(app *fiber.App) {
 	api.Delete("/broadcasts/:id", h.CancelBroadcast)
 	api.Get("/broadcasts/:id/logs", h.GetLogs)
 	api.Get("/broadcasts/:id/download", h.DownloadExcel)
+}
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
+
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+func (h *Handler) Login(c *fiber.Ctx) error {
+	req := new(LoginRequest)
+	if err := c.BodyParser(req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
+	}
+
+	admin := os.Getenv("ADMIN")
+	pass := os.Getenv("ADMIN_PASSWORD")
+
+	if admin == "" || pass == "" {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Admin credentials not configured"})
+	}
+
+	if req.Username == admin && req.Password == pass {
+		return c.JSON(fiber.Map{"token": authToken})
+	}
+	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 }
 
 // ─── WhatsApp ───────────────────────────────────────────────────────────────
