@@ -39,9 +39,10 @@ export default function NewBroadcast() {
   const mutation = useMutation(
     (form: FormData) => broadcastApi.create(form).then(r => r.data),
     {
-      onSuccess: (data) => {
+      onSuccess: (data: any) => {
         toast.success('Broadcast berhasil dijadwalkan!')
-        nav(`/history/${data.id}`)
+        const id = data.id ?? data.ID
+        nav(`/history/${id}`)
       },
       onError: (err: any): void => {
         toast.error(err.response?.data?.message || 'Gagal membuat broadcast')

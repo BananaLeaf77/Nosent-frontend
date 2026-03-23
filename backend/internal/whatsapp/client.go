@@ -51,10 +51,10 @@ func NewClient(db *gorm.DB) *Client {
 // Connect initialises the whatsmeow client and restores session if available.
 func (c *Client) Connect() error {
 	ctx := context.Background()
-	dbPath := getEnv("WA_DB_PATH", "./wa_session.db")
+	dbAddress := getEnv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/nosent?sslmode=disable")
 	dbLog := waLog.Stdout("Database", "WARN", true)
 
-	container, err := sqlstore.New(ctx, "sqlite3", "file:"+dbPath+"?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(ctx, "postgres", dbAddress, dbLog)
 	if err != nil {
 		return fmt.Errorf("sqlstore: %w", err)
 	}
