@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useMutation } from 'react-query'
-import { broadcastApi } from '../lib/api'
+import { useNavigate, Link } from 'react-router-dom'
+import { useMutation, useQuery } from 'react-query'
+import { broadcastApi, waApi, type WAStatus } from '../lib/api'
 import toast from 'react-hot-toast'
-import { Upload, FileSpreadsheet, X, Info, Send, RefreshCw, Download } from 'lucide-react'
+import { Upload, FileSpreadsheet, X, Info, Send, RefreshCw, Download, AlertTriangle } from 'lucide-react'
 
 const DEFAULT_TEMPLATE = `Halo {{name}} 👋
 
@@ -23,8 +23,6 @@ const CRON_PRESETS = [
   { label: 'Setiap hari kerja 07.00',value: '0 0 7 * * 1-5' },
 ]
 
-
-
 export default function NewBroadcast() {
   const nav = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -35,6 +33,15 @@ export default function NewBroadcast() {
   const [scheduledAt, setScheduledAt] = useState('')
   const [cronExpr, setCronExpr] = useState('')
   const [dragOver, setDragOver] = useState(false)
+
+  // Poll WA status so the button disables/enables live
+  const { data: waStatusData } = useQuery(
+    'wa-status-new',
+    () => waApi.status().then(r => r.data?.status ?? 'disconnected'),
+    { refetchInterval: 8000 }
+  )
+  const waStatus: WAStatus = (waStatusData as WAStatus) ?? 'disconnected'
+  const waConnected = waStatus === 'connected'
 
   const mutation = useMutation(
     (form: FormData) => broadcastApi.create(form).then(r => r.data),
@@ -59,6 +66,10 @@ export default function NewBroadcast() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!waConnected) {
+      toast.error('WhatsApp belum terhubung. Hubungkan dulu di Pengaturan WA.')
+      return
+    }
     if (!file) { toast.error('Silakan upload file Excel'); return }
     if (!name.trim()) { toast.error('Nama broadcast wajib diisi'); return }
     if (scheduleType === 'once' && (!scheduledAt || !scheduledAt.includes('T') || scheduledAt.endsWith('T'))) {
@@ -78,12 +89,31 @@ export default function NewBroadcast() {
 
   const placeholders = ['{{name}}', '{{phone}}', '{{address}}', '{{hpht}}', '{{pregnancy_number}}']
 
+  const submitDisabled = mutation.isLoading || !waConnected
+
   return (
     <div className="p-4 md:p-8 pb-safe max-w-2xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold" style={{ color: 'var(--text)' }}>Broadcast Baru</h1>
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-2)' }}>Upload data pasien dan jadwalkan pengingat</p>
       </div>
+
+      {/* WA disconnected banner */}
+      {!waConnected && (
+        <Link to="/setup"
+          className="flex items-center gap-3 rounded-2xl px-4 py-3.5 mb-5 transition-colors"
+          style={{ background: 'var(--amber-bg)', border: '1px solid rgba(245,158,11,0.25)' }}>
+          <AlertTriangle size={17} className="text-amber-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-amber-400">WhatsApp belum terhubung</div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>
+              {waStatus === 'waiting_qr'
+                ? 'Scan QR code di Pengaturan WA terlebih dahulu →'
+                : 'Hubungkan WhatsApp di Pengaturan WA untuk bisa mengirim broadcast →'}
+            </div>
+          </div>
+        </Link>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
 
@@ -225,13 +255,31 @@ export default function NewBroadcast() {
           )}
         </div>
 
-        <button type="submit" disabled={mutation.isLoading}
-          className="w-full py-3.5 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg,#25d366,#128c7e)' }}>
-          {mutation.isLoading
-            ? <><RefreshCw size={16} className="animate-spin" /> Menjadwalkan…</>
-            : <><Send size={16} /> Jadwalkan Broadcast</>}
-        </button>
+        {/* Submit */}
+        <div className="space-y-2">
+          <button
+            type="submit"
+            disabled={submitDisabled}
+            title={!waConnected ? 'Hubungkan WhatsApp terlebih dahulu' : ''}
+            className="w-full py-3.5 rounded-2xl text-sm font-semibold text-white flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
+            style={submitDisabled
+              ? { background: 'var(--surface-2)', color: 'var(--text-2)', cursor: 'not-allowed', border: '1px solid var(--border)' }
+              : { background: 'linear-gradient(135deg,#25d366,#128c7e)', opacity: 1 }
+            }>
+            {mutation.isLoading
+              ? <><RefreshCw size={16} className="animate-spin" /> Menjadwalkan…</>
+              : !waConnected
+              ? <><AlertTriangle size={16} /> WhatsApp Tidak Terhubung</>
+              : <><Send size={16} /> Jadwalkan Broadcast</>
+            }
+          </button>
+
+          {!waConnected && (
+            <p className="text-center text-xs" style={{ color: 'var(--text-2)' }}>
+              <Link to="/setup" className="text-amber-400 hover:underline">Buka Pengaturan WA</Link> untuk menghubungkan WhatsApp
+            </p>
+          )}
+        </div>
       </form>
     </div>
   )
