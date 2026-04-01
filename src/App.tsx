@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom'
 import { useQuery } from 'react-query'
-import { waApi, type WAStatus, api } from './lib/api'
+import { waApi, type WAStatus, type WAMe, formatWAPhone, api } from './lib/api'
 import Dashboard from './pages/Dashboard'
 import NewBroadcast from './pages/NewBroadcast'
 import History from './pages/History'
@@ -9,7 +9,8 @@ import BroadcastDetail from './pages/BroadcastDetail'
 import WASetup from './pages/WASetup'
 import Login from './pages/Login'
 import {
-  LayoutGrid, Send, Clock, Wifi, WifiOff, Loader2, MessageSquare, Sun, Moon, LogOut
+  LayoutGrid, Send, Clock, Wifi, WifiOff, Loader2, MessageSquare, Sun, Moon, LogOut,
+  User, Smartphone,
 } from 'lucide-react'
 
 export type Theme = 'dark' | 'light'
@@ -26,9 +27,21 @@ export function useTheme() {
   return { theme, toggle }
 }
 
+/** Decode JWT payload without verifying signature (client-side only) */
+function getJWTUsername(): string {
+  try {
+    const token = localStorage.getItem('token') ?? ''
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return (payload.sub as string) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export default function App() {
   const { theme, toggle } = useTheme()
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'))
+  const username = token ? getJWTUsername() : ''
 
   const handleLogin = (t: string) => {
     localStorage.setItem('token', t)
@@ -44,21 +57,25 @@ export default function App() {
     const interceptor = api.interceptors.response.use(
       (res) => res,
       (err) => {
-        if (err.response?.status === 401) {
-          handleLogout()
-        }
+        if (err.response?.status === 401) handleLogout()
         return Promise.reject(err)
       }
     )
     return () => api.interceptors.response.eject(interceptor)
   }, [])
 
-  const { data } = useQuery(
+  const { data: statusData } = useQuery(
     ['wa-status', token],
     () => waApi.status().then(r => r.data?.status ?? 'disconnected'),
     { refetchInterval: 8000, enabled: !!token }
   )
-  const status: WAStatus = data ?? 'disconnected'
+  const status: WAStatus = statusData ?? 'disconnected'
+
+  const { data: waMe } = useQuery(
+    ['wa-me', token],
+    () => waApi.me().then(r => r.data),
+    { refetchInterval: 10000, enabled: !!token }
+  )
 
   if (!token) {
     return <Login onLogin={handleLogin} />
@@ -66,12 +83,17 @@ export default function App() {
 
   return (
     <div className="flex flex-col min-h-dvh">
-      {/* Mobile top header */}
-      <MobileHeader theme={theme} onToggleTheme={toggle} status={status} onLogout={handleLogout} />
+      <MobileHeader theme={theme} onToggleTheme={toggle} status={status} onLogout={handleLogout} username={username} />
 
-      {/* Desktop layout */}
       <div className="flex flex-1 md:flex-row pb-16 md:pb-0">
-        <DesktopSidebar status={status} theme={theme} onToggleTheme={toggle} onLogout={handleLogout} />
+        <DesktopSidebar
+          status={status}
+          theme={theme}
+          onToggleTheme={toggle}
+          onLogout={handleLogout}
+          username={username}
+          waMe={waMe}
+        />
         <main className="flex-1 overflow-y-auto scrollbar-thin">
           <Routes>
             <Route path="/" element={<Dashboard status={status} />} />
@@ -83,15 +105,14 @@ export default function App() {
         </main>
       </div>
 
-      {/* Mobile bottom nav */}
       <MobileBottomNav status={status} />
     </div>
   )
 }
 
 /* ── Mobile top bar ─────────────────────────────────────────── */
-function MobileHeader({ theme, onToggleTheme, status, onLogout }: {
-  theme: Theme; onToggleTheme: () => void; status: WAStatus; onLogout: () => void
+function MobileHeader({ theme, onToggleTheme, status, onLogout, username }: {
+  theme: Theme; onToggleTheme: () => void; status: WAStatus; onLogout: () => void; username: string
 }) {
   const location = useLocation()
   const isDark = theme === 'dark'
@@ -105,12 +126,21 @@ function MobileHeader({ theme, onToggleTheme, status, onLogout }: {
   const isDetail = location.pathname.startsWith('/history/') && location.pathname !== '/history'
   const title = isDetail ? 'Detail Broadcast' : (pageTitle[location.pathname] ?? 'Nosent')
 
-  const statusColor = { connected: '#25d366', waiting_qr: '#f59e0b', disconnected: '#ef4444' }[status]
+  const statusColor = {
+    connected: '#25d366',
+    waiting_qr: '#f59e0b',
+    disconnected: '#ef4444',
+  }[status]
+
+  const statusLabel = {
+    connected: 'WA',
+    waiting_qr: 'Scan',
+    disconnected: 'Putus',
+  }[status]
 
   return (
     <header className="md:hidden glass sticky top-0 z-40 px-4 py-3 flex items-center gap-3"
       style={{ borderBottom: '1px solid var(--border)' }}>
-      {/* Logo mark */}
       <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
         style={{ background: 'linear-gradient(135deg,#25d366,#128c7e)' }}>
         <MessageSquare size={13} color="white" />
@@ -118,29 +148,26 @@ function MobileHeader({ theme, onToggleTheme, status, onLogout }: {
 
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold truncate" style={{ color: 'var(--text)' }}>{title}</div>
+        {username && (
+          <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>{username}</div>
+        )}
       </div>
 
-      {/* WA status dot */}
+      {/* WA status indicator */}
       <div className="flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full" style={{ background: statusColor }} />
-        <span className="text-[11px]" style={{ color: 'var(--text-2)' }}>
-          {status === 'connected' ? 'WA' : status === 'waiting_qr' ? 'Scan' : 'Putus'}
-        </span>
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: statusColor }} />
+        <span className="text-[11px]" style={{ color: statusColor }}>{statusLabel}</span>
       </div>
 
-      {/* Theme toggle */}
       <button onClick={onToggleTheme}
         className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
-        style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}
-        title={isDark ? 'Mode terang' : 'Mode gelap'}>
+        style={{ background: 'var(--surface-2)', color: 'var(--text-2)' }}>
         {isDark ? <Sun size={15} /> : <Moon size={15} />}
       </button>
 
-      {/* Logout button */}
       <button onClick={onLogout}
-        className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors text-red-500 hover:bg-red-50"
-        style={{ background: 'var(--surface-2)' }}
-        title="Logout">
+        className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+        style={{ background: 'var(--surface-2)', color: '#ef4444' }}>
         <LogOut size={15} />
       </button>
     </header>
@@ -155,7 +182,12 @@ function MobileBottomNav({ status }: { status: WAStatus }) {
     { to: '/history', icon: Clock, label: 'Riwayat' },
     { to: '/setup', icon: MessageSquare, label: 'WA' },
   ]
-  const statusColor = { connected: '#25d366', waiting_qr: '#f59e0b', disconnected: '#ef4444' }[status]
+
+  const statusColor = {
+    connected: '#25d366',
+    waiting_qr: '#f59e0b',
+    disconnected: '#ef4444',
+  }[status]
 
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 glass flex"
@@ -166,11 +198,9 @@ function MobileBottomNav({ status }: { status: WAStatus }) {
           style={({ isActive }) => ({ color: isActive ? '#25d366' : 'var(--text-2)' })}>
           {({ isActive }) => (
             <>
-              {/* Active pill */}
               {isActive && (
                 <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-[#25d366]" />
               )}
-              {/* WA status dot on setup icon */}
               <span className="relative">
                 <NavIcon size={21} />
                 {to === '/setup' && (
@@ -188,8 +218,13 @@ function MobileBottomNav({ status }: { status: WAStatus }) {
 }
 
 /* ── Desktop sidebar ────────────────────────────────────────── */
-function DesktopSidebar({ status, theme, onToggleTheme, onLogout }: {
-  status: WAStatus; theme: Theme; onToggleTheme: () => void; onLogout: () => void
+function DesktopSidebar({ status, theme, onToggleTheme, onLogout, username, waMe }: {
+  status: WAStatus
+  theme: Theme
+  onToggleTheme: () => void
+  onLogout: () => void
+  username: string
+  waMe?: WAMe
 }) {
   const navItems = [
     { to: '/', icon: LayoutGrid, label: 'Dashboard' },
@@ -197,18 +232,41 @@ function DesktopSidebar({ status, theme, onToggleTheme, onLogout }: {
     { to: '/history', icon: Clock, label: 'Riwayat' },
     { to: '/setup', icon: MessageSquare, label: 'Pengaturan WA' },
   ]
-  const statusConfig = {
-    connected:    { color: '#25d366', label: 'Terhubung', Icon: Wifi },
-    waiting_qr:   { color: '#f59e0b', label: 'Scan QR',   Icon: Loader2 },
-    disconnected: { color: '#ef4444', label: 'Terputus',  Icon: WifiOff },
-  }
-  const { color, label, Icon } = statusConfig[status]
+
   const isDark = theme === 'dark'
+
+  // Status config — always shows a meaningful state
+  const statusConfig: Record<WAStatus, { color: string; label: string; sublabel: string; Icon: typeof Wifi; spin: boolean }> = {
+    connected: {
+      color: '#25d366',
+      label: 'Terhubung',
+      sublabel: waMe?.phone ? formatWAPhone(waMe.phone) : 'WhatsApp aktif',
+      Icon: Wifi,
+      spin: false,
+    },
+    waiting_qr: {
+      color: '#f59e0b',
+      label: 'Menunggu QR',
+      sublabel: 'Scan QR di Pengaturan WA',
+      Icon: Loader2,
+      spin: true,
+    },
+    disconnected: {
+      color: '#ef4444',
+      label: 'Tidak Terhubung',
+      sublabel: 'Buka Pengaturan WA',
+      Icon: WifiOff,
+      spin: false,
+    },
+  }
+
+  const sc = statusConfig[status]
 
   return (
     <aside className="hidden md:flex flex-col w-60 min-h-screen glass sticky top-0"
       style={{ borderRight: '1px solid var(--border)' }}>
-      {/* Logo */}
+
+      {/* Logo + theme toggle */}
       <div className="px-6 py-5 flex items-center justify-between"
         style={{ borderBottom: '1px solid var(--border)' }}>
         <div className="flex items-center gap-3">
@@ -228,6 +286,37 @@ function DesktopSidebar({ status, theme, onToggleTheme, onLogout }: {
         </button>
       </div>
 
+      {/* Profile card */}
+      <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
+        <div className="glass-2 rounded-xl px-3 py-3 flex items-center gap-3">
+          {/* Avatar */}
+          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-semibold text-sm"
+            style={{
+              background: 'linear-gradient(135deg,rgba(37,211,102,0.2),rgba(18,140,126,0.2))',
+              color: '#25d366',
+              border: '1px solid rgba(37,211,102,0.3)',
+            }}>
+            {username ? username[0].toUpperCase() : <User size={14} />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate" style={{ color: 'var(--text)' }}>
+              {username || 'Admin'}
+            </div>
+            {/* WA number under name */}
+            {status === 'connected' && waMe?.phone ? (
+              <div className="flex items-center gap-1 text-[10px] truncate" style={{ color: '#25d366' }}>
+                <Smartphone size={9} />
+                <span>{formatWAPhone(waMe.phone)}</span>
+              </div>
+            ) : (
+              <div className="text-[10px] truncate" style={{ color: 'var(--text-2)' }}>
+                {status === 'waiting_qr' ? 'Menunggu scan QR…' : 'WA belum terhubung'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-1">
         {navItems.map(({ to, icon: NavIcon, label }) => (
@@ -245,24 +334,35 @@ function DesktopSidebar({ status, theme, onToggleTheme, onLogout }: {
         ))}
       </nav>
 
-      {/* WA Status & Logout */}
+      {/* WA Status + Logout */}
       <div className="px-4 py-4 space-y-3" style={{ borderTop: '1px solid var(--border)' }}>
-        <div className="glass-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5">
-          <div className="relative">
-            <Icon size={15} color={color} className={status === 'waiting_qr' ? 'animate-spin' : ''} />
+        {/* Status card — always visible, color-coded by state */}
+        <NavLink to="/setup"
+          className="glass-2 rounded-xl px-3 py-2.5 flex items-center gap-2.5 transition-opacity hover:opacity-80 block"
+          style={{ textDecoration: 'none' }}>
+          <div className="relative shrink-0">
+            <sc.Icon
+              size={15}
+              color={sc.color}
+              className={sc.spin ? 'animate-spin' : ''}
+            />
             {status === 'connected' && (
               <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-[#25d366] animate-pulse" />
             )}
           </div>
-          <div>
-            <div className="text-xs font-medium" style={{ color }}>WhatsApp</div>
-            <div className="text-[11px]" style={{ color: 'var(--text-2)' }}>{label}</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium leading-tight" style={{ color: sc.color }}>
+              {sc.label}
+            </div>
+            <div className="text-[10px] truncate leading-tight mt-0.5" style={{ color: 'var(--text-2)' }}>
+              {sc.sublabel}
+            </div>
           </div>
-        </div>
+        </NavLink>
 
         <button onClick={onLogout}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-500/10"
-          style={{ background: 'var(--surface-2)' }}>
+          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-medium transition-colors"
+          style={{ background: 'var(--surface-2)', color: '#ef4444' }}>
           <LogOut size={14} />
           Logout
         </button>
