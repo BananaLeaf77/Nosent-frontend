@@ -57,6 +57,7 @@ export const waApi = {
   me: () => api.get<WAMe>('/api/wa/me'),
   logout: () => api.post('/api/wa/logout'),
   reconnect: () => api.post('/api/wa/reconnect'),
+  ping: (phone: string) => api.post('/api/ping', { phone }),
 }
 
 export const broadcastApi = {

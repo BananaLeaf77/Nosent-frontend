@@ -3,11 +3,13 @@ import { useQuery, useMutation } from 'react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import { waApi } from '../lib/api'
 import toast from 'react-hot-toast'
-import { CheckCircle2, RefreshCw, LogOut, Smartphone, Wifi, WifiOff, AlertCircle } from 'lucide-react'
+import { CheckCircle2, RefreshCw, LogOut, Smartphone, Wifi, WifiOff, AlertCircle, MessageSquare, X, Send } from 'lucide-react'
 
 export default function WASetup() {
   const [qr, setQr] = useState<string | null>(null)
   const [reconnecting, setReconnecting] = useState(false)
+  const [isPingOpen, setIsPingOpen] = useState(false)
+  const [pingPhone, setPingPhone] = useState('')
 
   const { data: statusData, refetch: refetchStatus } = useQuery(
     'wa-status-page',
@@ -31,6 +33,21 @@ export default function WASetup() {
         setTimeout(() => refetchStatus(), 2000)
       },
       onError: () => { toast.error('Gagal keluar') },
+    }
+  )
+
+  const pingMutation = useMutation(
+    (phone: string) => waApi.ping(phone),
+    {
+      onSuccess: () => {
+        toast.success('Pesan ping berhasil dikirim!')
+        setIsPingOpen(false)
+        setPingPhone('')
+      },
+      onError: (err: any) => {
+        const msg = err.response?.data?.message || err.message || 'Gagal mengirim ping'
+        toast.error(msg)
+      },
     }
   )
 
@@ -88,17 +105,25 @@ export default function WASetup() {
         </div>
 
         {status === 'connected' && (
-          <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid var(--border)' }}>
+          <div className="mt-4 pt-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3" style={{ borderTop: '1px solid var(--border)' }}>
             <div className="flex items-center gap-2 text-xs text-[#25d366]">
               <CheckCircle2 size={13} /><span>Siap mengirim broadcast</span>
             </div>
-            <button
-              onClick={() => { if (confirm('Putuskan WhatsApp? Anda perlu scan QR lagi.')) logoutMutation.mutate() }}
-              disabled={logoutMutation.isLoading}
-              className="flex items-center gap-1.5 text-xs hover:text-red-400 transition-colors"
-              style={{ color: 'var(--text-2)' }}>
-              <LogOut size={12} /> Putuskan
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsPingOpen(true)}
+                className="flex items-center gap-1.5 text-xs transition-colors hover:text-[#25d366]"
+                style={{ color: 'var(--text-2)' }}>
+                <MessageSquare size={12} /> Test Ping
+              </button>
+              <button
+                onClick={() => { if (confirm('Putuskan WhatsApp? Anda perlu scan QR lagi.')) logoutMutation.mutate() }}
+                disabled={logoutMutation.isLoading}
+                className="flex items-center gap-1.5 text-xs hover:text-red-400 transition-colors"
+                style={{ color: 'var(--text-2)' }}>
+                <LogOut size={12} /> Putuskan
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -151,6 +176,41 @@ export default function WASetup() {
           Jaga server tetap berjalan untuk mempertahankan koneksi. WhatsApp dapat terputus setelah 14 hari tidak aktif — cukup scan ulang QR untuk terhubung kembali.
         </p>
       </div>
+
+      {/* Ping Modal */}
+      {isPingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}>
+          <div className="glass w-full max-w-sm rounded-2xl p-5 shadow-2xl relative">
+            <button onClick={() => setIsPingOpen(false)} className="absolute top-4 right-4 text-[var(--text-2)] hover:text-[var(--text)] transition-colors">
+              <X size={18} />
+            </button>
+            <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--text)' }}>Test Ping WA</h3>
+            <p className="text-xs mb-4" style={{ color: 'var(--text-2)' }}>Kirim pesan percobaan ke nomor tertentu</p>
+            <form onSubmit={(e) => {
+              e.preventDefault()
+              pingMutation.mutate(pingPhone)
+            }} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text)' }}>Nomor Tujuan</label>
+                <input type="text"
+                  value={pingPhone}
+                  onChange={e => setPingPhone(e.target.value)}
+                  placeholder="Contoh: 628123456789"
+                  className="w-full bg-[var(--surface-2)] text-[var(--text)] text-sm rounded-xl px-3 py-2 outline-none border border-[var(--border)] focus:border-[#25d366] transition-colors"
+                  required
+                />
+              </div>
+              <button type="submit"
+                disabled={pingMutation.isLoading}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-sm font-medium text-white transition-opacity disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg,#25d366,#128c7e)' }}>
+                {pingMutation.isLoading ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+                Kirim Ping
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
