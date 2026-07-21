@@ -66,7 +66,19 @@ export const broadcastApi = {
   get: (id: number) => api.get<BroadcastSummary>(`/api/broadcasts/${id}`),
   cancel: (id: number) => api.delete(`/api/broadcasts/${id}`),
   logs: (id: number) => api.get<MessageLog[]>(`/api/broadcasts/${id}/logs`),
-  downloadUrl: (id: number) => `${BASE}/api/broadcasts/${id}/download`,
+  /** Download the Excel file via authenticated request and trigger a browser download */
+  async download(id: number, filename?: string) {
+    const res = await api.get(`/api/broadcasts/${id}/download`, { responseType: 'blob' })
+    const blob = res.data
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename || `broadcast-${id}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  },
 }
 
 export const authApi = {

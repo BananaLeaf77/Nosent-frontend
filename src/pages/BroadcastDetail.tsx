@@ -71,10 +71,10 @@ export default function BroadcastDetail() {
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-2)' }}>{broadcast.excel_name}</p>
         </div>
         <div className="flex items-center gap-2">
-          <a href={broadcastApi.downloadUrl(Number(paramId))}
+          <button onClick={() => broadcastApi.download(Number(paramId))}
             className="p-2 glass-2 rounded-xl transition-colors" style={{ color: 'var(--text-2)' }} title="Unduh Excel">
             <Download size={16} />
-          </a>
+          </button>
           {canCancel && (
             <button onClick={() => { if (confirm('Batalkan broadcast ini?')) cancelMutation.mutate() }}
               className="p-2 glass-2 rounded-xl transition-colors hover:text-red-400" style={{ color: 'var(--text-2)' }}>
